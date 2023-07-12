@@ -16,6 +16,10 @@ import tqdm
 import time
 import h5py
 import pickle
+import re
+import glob
+import subprocess
+import shlex
 
 import fiftyone as fo
 from fiftyone import ViewField as F
@@ -103,6 +107,10 @@ def save_features(feats_npy, dataset_view, file_path):
             pickle.dump(feats_dict, f)
 
 def extract(dataset, id, backbone):
+    aug = T.AugmentationList([T.ResizeShortestEdge(
+            [cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MIN_SIZE_TEST], cfg.INPUT.MAX_SIZE_TEST),
+        ]
+    )
     dataset_name = dataset.name
     i = 0
     feats_list = []
@@ -179,7 +187,7 @@ def extract_aug(dataset, id, backbone, epoch):
         ]
     )
     for e in range(epoch):
-        print(f"Epoch {e+40}")
+        print(f"Epoch {e}")
         for sample in tqdm.tqdm(dataset, desc="Extracting features"):
             image = cv2.imread(sample.filepath)
             height, width = image.shape[:2]
@@ -226,7 +234,7 @@ def extract_aug(dataset, id, backbone, epoch):
             eval_key="eval",
             compute_mAP=True)
         tp_prediction_view = dataset.filter_labels("prediction", F("eval") == "tp")
-        save_features(feats_npy, tp_prediction_view, f"train_feats/{id}/{backbone}/{dataset_name}_epoch{e+40}_feats_tp_dict.pickle")
+        save_features(feats_npy, tp_prediction_view, f"train_feats/{id}/{backbone}/{dataset_name}_epoch{e}_feats_tp_dict.pickle")
 
 def construct(id, backbone, taus):
     with open(f"train_feats/{id}/{backbone}/{id}-train_feats_tp_dict.pickle", 'rb') as f:
@@ -393,6 +401,58 @@ def tune_threshold(dataset_train, feats_npy, id, backbone, threshold, taus):
     save_features(feats_npy, tp_prediction_view, f"train_feats/{id}/{backbone}/{id}-train_feats_tp_dict.pickle")
     construct(id, backbone, taus)
 
+def vos_eval(id, backbone):
+    config_name = f"vos_{backbone}"
+    inference_folder = f'/home/hugo/bdd100k-monitoring/vos/detection/data/{id.upper()}-Detection/faster-rcnn/{config_name}/random_seed_0'
+    # if a folder does not exist, create it
+    if not os.path.exists(inference_folder):
+        os.makedirs(inference_folder)
+
+    if id == "bdd":
+        dataset_dir = "/home/hugo/fiftyone/bdd100k"
+    elif id == "voc":
+        dataset_dir = "/home/hugo/fiftyone/VOC_0712_converted"
+    elif id == "nu":
+        dataset_dir = "/home/hugo/nuscene"
+    in_eval_command = f"python vos/detection/apply_net.py  --dataset-dir {dataset_dir} --test-dataset {id}_custom_val  --config-file {id.upper()}-Detection/faster-rcnn/{config_name}.yaml  --inference-config Inference/standard_nms.yaml  --random-seed 0  --image-corruption-level 0  --visualize 0"
+    subprocess.call(shlex.split(in_eval_command))
+
+    if id == "bdd" or id == "kitti" or id == "nu":
+        ood_eval_command1 = f"python vos/detection/apply_net.py  --dataset-dir /home/hugo/fiftyone/coco-2017 --test-dataset coco_ood_val_bdd  --config-file {id.upper()}-Detection/faster-rcnn/{config_name}.yaml  --inference-config Inference/standard_nms.yaml  --random-seed 0  --image-corruption-level 0  --visualize 0"
+        subprocess.call(shlex.split(ood_eval_command1))
+
+        ood_eval_command2 = f"python vos/detection/apply_net.py  --dataset-dir /home/hugo/fiftyone/OpenImages --test-dataset openimages_ood_val  --config-file {id.upper()}-Detection/faster-rcnn/{config_name}.yaml  --inference-config Inference/standard_nms.yaml  --random-seed 0  --image-corruption-level 0  --visualize 0"
+        subprocess.call(shlex.split(ood_eval_command2))
+
+        ood_eval_command3 = f"python vos/detection/apply_net.py  --dataset-dir /home/hugo/fiftyone/voc-ood --test-dataset voc_ood_val  --config-file {id.upper()}-Detection/faster-rcnn/{config_name}.yaml  --inference-config Inference/standard_nms.yaml  --random-seed 0  --image-corruption-level 0  --visualize 0"
+        subprocess.call(shlex.split(ood_eval_command3))
+    else:
+        ood_eval_command1 = f"python vos/detection/apply_net.py  --dataset-dir /home/hugo/fiftyone/coco-2017 --test-dataset coco_ood_val  --config-file {id.upper()}-Detection/faster-rcnn/{config_name}.yaml  --inference-config Inference/standard_nms.yaml  --random-seed 0  --image-corruption-level 0  --visualize 0"
+        subprocess.call(shlex.split(ood_eval_command1))
+
+        ood_eval_command2 = f"python vos/detection/apply_net.py  --dataset-dir /home/hugo/fiftyone/OpenImages --test-dataset openimages_ood_val  --config-file {id.upper()}-Detection/faster-rcnn/{config_name}.yaml  --inference-config Inference/standard_nms.yaml  --random-seed 0  --image-corruption-level 0  --visualize 0"
+        subprocess.call(shlex.split(ood_eval_command2))
+
+    file_path = f'{inference_folder}/inference/{id}_custom_val/standard_nms/corruption_level_0/probabilistic_scoring_res_odd*.txt'
+    file_path = glob.glob(file_path)[0]
+    threshold = re.findall(r'\d+\.\d+', file_path)[-1]
+
+    if id == "bdd" or id == "kitti" or id == "nu":
+        metric_command1 = f"python vos/bdd_coco_plot.py --name {config_name}  --thres {threshold}  --energy 1  --seed 0 --eval_dataset coco_ood_val_bdd --id {id}"
+        subprocess.call(shlex.split(metric_command1))
+
+        metric_command2 = f"python vos/bdd_coco_plot.py --name {config_name}  --thres {threshold}  --energy 1  --seed 0 --eval_dataset openimages_ood_val --id {id}"
+        subprocess.call(shlex.split(metric_command2))
+
+        metric_command3 = f"python vos/bdd_coco_plot.py --name {config_name}  --thres {threshold}  --energy 1  --seed 0 --eval_dataset voc_ood_val --id {id}"
+        subprocess.call(shlex.split(metric_command3))
+    else:
+        metric_command1 = f"python vos/bdd_coco_plot.py --name {config_name}  --thres {threshold}  --energy 1  --seed 0 --eval_dataset coco_ood_val --id {id}"
+        subprocess.call(shlex.split(metric_command1))
+
+        metric_command2 = f"python vos/bdd_coco_plot.py --name {config_name}  --thres {threshold}  --energy 1  --seed 0 --eval_dataset openimages_ood_val --id {id}"
+        subprocess.call(shlex.split(metric_command2))
+
 parser = argparse.ArgumentParser(description='Description of your program')
 parser.add_argument('--id', type=str, help='Description of the in-distribution dataset argument')
 parser.add_argument('--backbone', type=str)
@@ -419,70 +479,65 @@ model.eval()
 checkpointer = DetectionCheckpointer(model)
 checkpointer.load(cfg.MODEL.WEIGHTS)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-aug = T.AugmentationList([T.ResizeShortestEdge(
-            [cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MIN_SIZE_TEST], cfg.INPUT.MAX_SIZE_TEST),
-        # T.RandomBrightness(0.8, 1.8),
-        # T.RandomContrast(0.6, 1.3),
-        # T.RandomSaturation(0.8, 1.4),
-        # T.RandomLighting(0.8)
-        ]
-    )
-taus = [1.0, 0.5, 0.1, 0.05, 0.01]
+taus = [round(i*0.05, 2) for i in range(0, 20)]
 
 # extraction
 print("Starting training set extraction")
 t0 = time.time()
 dataset_train = fo.load_dataset(f"{args.id}-train")
-extract(dataset_train, args.id, args.backbone)
+# extract(dataset_train, args.id, args.backbone)
 # extract_aug(dataset_train, args.id, args.backbone, 10)
-print(f"Extraction took {time.time() - t0} seconds")
+# print(f"Extraction took {time.time() - t0} seconds")
 
-print("Starting validation set extraction")
-t0 = time.time()
-dataset_list = {
-    "bdd": ["ID-bdd-OOD-coco", "OOD-open", "bdd-val", "voc-ood"], 
-    "voc": ["ID-voc-OOD-coco", "OOD-open", "voc-val"],
-    "kitti": ["ID-bdd-OOD-coco", "OOD-open", "kitti-val", "voc-ood"],
-    "speed": ["ID-bdd-OOD-coco", "OOD-open", "speed-val", "voc-ood"],
-    "nu": ["ID-bdd-OOD-coco", "OOD-open", "nu-val", "voc-ood"]}
-for dataset_name in dataset_list[args.id]:
-    print(f"Extracting {dataset_name}")
-    dataset_val = fo.load_dataset(dataset_name)
-    extract(dataset_val, args.id, args.backbone)
-print(f"Validation set extraction took {time.time() - t0} seconds")
+# print("Starting validation set extraction")
+# t0 = time.time()
+# dataset_list = {
+#     "bdd": ["ID-bdd-OOD-coco", "OOD-open", "bdd-val", "voc-ood"], 
+#     "voc": ["ID-voc-OOD-coco", "OOD-open", "voc-val"],
+#     "kitti": ["ID-bdd-OOD-coco", "OOD-open", "kitti-val", "voc-ood"],
+#     "speed": ["ID-bdd-OOD-coco", "OOD-open", "speed-val", "voc-ood"],
+#     "nu": ["ID-bdd-OOD-coco", "OOD-open", "nu-val", "voc-ood"]}
+# for dataset_name in dataset_list[args.id]:
+#     print(f"Extracting {dataset_name}")
+#     dataset_val = fo.load_dataset(dataset_name)
+#     extract(dataset_val, args.id, args.backbone)
+# print(f"Validation set extraction took {time.time() - t0} seconds")
 
 #concetenate features
 # print("Starting concatenating features")
 # t0 = time.time()
-# with open('/home/hugo/bdd100k-monitoring/train_feats/speed/resnet/speed-train_feats_tp_dict.pickle', 'rb') as f:
+# with open(f'/home/hugo/bdd100k-monitoring/train_feats/{args.id}/{args.backbone}/{args.id}-train_epoch0_feats_tp_dict.pickle', 'rb') as f:
 #     feats_dict = pickle.load(f)
-# for num in range(10):
-#     with open(f'/home/hugo/bdd100k-monitoring/train_feats/speed/resnet/speed-train_epoch{num+40}_feats_tp_dict.pickle', 'rb') as f:
+# for num in range(1, 5):
+#     with open(f'/home/hugo/bdd100k-monitoring/train_feats/{args.id}/{args.backbone}/{args.id}-train_epoch{num}_feats_tp_dict.pickle', 'rb') as f:
 #         data = pickle.load(f)
 #     for k, v in feats_dict.items():
 #         feats_dict[k] = np.concatenate((v, data[k]), axis=0)
-# with open('/home/hugo/bdd100k-monitoring/train_feats/speed/resnet/speed-train_feats_tp_dict.pickle', 'wb') as f:
+# with open(f'/home/hugo/bdd100k-monitoring/train_feats/{args.id}/{args.backbone}/{args.id}-train_feats_tp_dict.pickle', 'wb') as f:
 #     pickle.dump(feats_dict, f)
 # print(f"Concatenating features took {time.time() - t0} seconds")
 
-# #construction
+#construction
 print("Starting construction")
 t0 = time.time()
 construct(args.id, args.backbone, taus)
 print(f"Construction took {time.time() - t0} seconds")
 
-# evaluation
+# bam evaluation
 print("Starting evaluation")
 t0 = time.time()
 for tau in taus:
+    print(f"tau: {tau}")
     evaluate(args.id, args.backbone, tau)
 print(f"Evaluation took {time.time() - t0} seconds")
 
+# vos evaluation
+# vos_eval(args.id, args.backbone)
 # tune confidence threshold
 # with h5py.File(f"feats_{args.id}-train_{args.backbone}.h5", 'r') as f:
 #     feats_npy = f[f'feats_{args.id}-train_{args.backbone}'][:]
-# tune_threshold(dataset_train, feats_npy, args.id, args.backbone, 0.5, taus)
+# tune_threshold(dataset_train, feats_npy, args.id, args.backbone, 0.05, taus)
 # monitor enhancement
-# for ratio in [0.52, 0.54, 0.56, 0.58]:
+# for ratio in [0.1, 0.2, 0.3]:
 #     print(f"ratio: {ratio}")
-#     enlarge_evaluation(args.id, args.backbone, 1.0, ratio) 
+#     enlarge_evaluation(args.id, args.backbone, 0.01, ratio) 

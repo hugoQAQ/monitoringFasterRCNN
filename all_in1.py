@@ -65,13 +65,24 @@ BDD_THING_CLASSES = ['pedestrian',
                     'traffic light',
                     'traffic sign']
 KITTI_THING_CLASSES = ["Car", "Pedestrian", "Cyclist", "Van", "Truck", "Tram"]
-SPEED_THING_CLASSES = ['100km/h','120km/h','20km/h','30km/h','40km/h','5km/h','50km/h','60km/h','70km/h','80km/h']
+SPEED_THING_CLASSES = ['100kph','120kph','20kph','30kph','40kph','5kph','50kph','60kph','70kph','80kph']
+# SPEED_THING_CLASSES = ['pl100',
+#  'pl120',
+#  'pl20',
+#  'pl30',
+#  'pl40',
+#  'pl5',
+#  'pl50',
+#  'pl60',
+#  'pl70',
+#  'pl80']
 NU_THING_CLASSES = ['car','truck','trailer','bus','construction_vehicle','bicycle','motorcycle','pedestrian','traffic_cone','barrier']
 benchmark_vos = {"voc": {"resnet":[47.53, 51.33], "regnet":[47.77, 48.33]}, 
                 "bdd": {"resnet":[44.27, 35.54, 49.85], "regnet":[36.61, 27.24, 41.05]},
                 "kitti": {"resnet":[44.27, 35.54], "regnet":[36.61, 27.24]},
                 "speed": {"resnet":["N/A", "N/A"], "regnet":["N/A", "N/A"]},
                 "nu": {"resnet":["N/A", "N/A"], "regnet":["N/A", "N/A"]},
+                "prescan": {"resnet":["N/A", "N/A"], "regnet":["N/A", "N/A"]},
                 }
 
 def inference(model, inputs):
@@ -152,6 +163,9 @@ def extract(dataset, id, backbone):
     if dataset.name.endswith("train"):
         with h5py.File(f'feats_{id}-train_{backbone}.h5', 'w') as f:
             dset = f.create_dataset(f"feats_{id}-train_{backbone}", data=feats_npy)
+    if id == "kitti":
+        with h5py.File(f"feats_{id}-{dataset_name}_{backbone}.h5", 'w') as f:
+            dset = f.create_dataset(f"feats_{id}-{dataset_name}_{backbone}", data=feats_npy)
         print(f"Saved {feats_npy.shape[0]} features")
     if dataset.name.endswith("val") or dataset.name.endswith("train"):
         results = dataset.evaluate_detections(
@@ -159,8 +173,8 @@ def extract(dataset, id, backbone):
             gt_field="detections",
             eval_key="eval",
             compute_mAP=True)
-        # results.print_report()
-        # print("mAP: ", results.mAP())
+        results.print_report()
+        print("mAP: ", results.mAP())
         if dataset.name.endswith("train"):
             tp_prediction_view = dataset.filter_labels("prediction", F("eval") == "tp")
             save_features(feats_npy, tp_prediction_view, f"train_feats/{id}/{backbone}/{dataset_name}_feats_tp_dict.pickle")
@@ -169,7 +183,7 @@ def extract(dataset, id, backbone):
             fp_prediction_view = dataset.filter_labels("prediction", F("eval") == "fp")
             save_features(feats_npy, tp_prediction_view, f"val_feats/{id}/{backbone}/{dataset_name}_feats_tp_dict.pickle")    
             save_features(feats_npy, fp_prediction_view, f"val_feats/{id}/{backbone}/{dataset_name}_feats_fp_dict.pickle")
-    else:    
+    else:   
         save_features(feats_npy, dataset, f"val_feats/{id}/{backbone}/{dataset_name}_feats_fp_dict.pickle")  
         
     return f"Extraction for {dataset_name} is Done!"        
@@ -227,6 +241,10 @@ def extract_aug(dataset, id, backbone, epoch):
             with h5py.File(f'feats_{id}-train_{backbone}.h5', 'w') as f:
                 dset = f.create_dataset(f"feats_{id}-train_{backbone}", data=feats_npy)
             print(f"Saved {feats_npy.shape[0]} features")
+        if id == "kitti":
+            with h5py.File(f'feats_{id}-train_{backbone}.h5', 'w') as f:
+                dset = f.create_dataset(f"feats_{id}-{dataset_name}_{backbone}", data=feats_npy)
+
     
         results = dataset.evaluate_detections(
             "prediction",
@@ -284,6 +302,7 @@ def evaluate(id, backbone, tau):
             data_fp.append([label, len(verdict), (len(verdict)-np.sum(verdict))/len(verdict)])
             accept_sum["fp"] += np.sum(verdict)
             reject_sum["fp"] += len(verdict) - np.sum(verdict)
+    print(accept_sum, reject_sum)
     TPR = round((accept_sum['tp'] / (reject_sum['tp'] + accept_sum['tp'])*100), 2)
     FPR =  round((accept_sum['fp'] / (reject_sum['fp'] + accept_sum['fp'])*100), 2)
     if id == "voc":
@@ -295,7 +314,7 @@ def evaluate(id, backbone, tau):
     elif id == "kitti":
         id == "KITTI"
         eval_list = ["ID-bdd-OOD-coco", "OOD-open", "voc-ood"]
-    elif id == "speed":
+    elif id == "speed" or id == "prescan":
         id == "SPEED"
         eval_list = ["ID-bdd-OOD-coco", "OOD-open", "voc-ood"]
     elif id == "nu":
@@ -324,6 +343,7 @@ def evaluate(id, backbone, tau):
     df_ood["Dataset"] = ["COCO", "Open Images"] if id == "voc" else ["COCO", "Open Images", "VOC-OOD"]
     print(df_summary)
     print(df_ood)
+    return df_summary["TPR"].tolist()[0], df_summary["FPR"].tolist()[0], df_ood["FPR"].tolist()[0], df_ood["FPR"].tolist()[1], df_ood["FPR"].tolist()[2]
 
 def enlarge_evaluation(id, backbone, tau, delta):
     # benchmark
@@ -364,7 +384,7 @@ def enlarge_evaluation(id, backbone, tau, delta):
     elif id == "kitti":
         id == "KITTI"
         eval_list = ["ID-bdd-OOD-coco", "OOD-open", "voc-ood"]
-    elif id == "speed":
+    elif id == "speed" or id == "prescan":
         id == "SPEED"
         eval_list = ["ID-bdd-OOD-coco", "OOD-open", "voc-ood"]
     elif id == "nu":
@@ -463,7 +483,7 @@ elif args.id == 'bdd':
     label_list = BDD_THING_CLASSES
 elif args.id == 'kitti':
     label_list = KITTI_THING_CLASSES
-elif args.id == 'speed':
+elif args.id == 'speed' or args.id == 'prescan':
     label_list = SPEED_THING_CLASSES
 elif args.id == 'nu':
     label_list = NU_THING_CLASSES
@@ -471,7 +491,8 @@ elif args.id == 'nu':
 label_dict = {i:label for i, label in enumerate(label_list)}
 
 cfg = get_cfg()
-cfg.merge_from_file(f"vos/detection/configs/{args.id.upper()}-Detection/faster-rcnn/vanilla_{args.backbone}.yaml")
+# cfg.merge_from_file(f"vos/detection/configs/{args.id.upper()}-Detection/faster-rcnn/vanilla_{args.backbone}.yaml")
+cfg.merge_from_file(f"vos/detection/configs/SPEED-Detection/faster-rcnn/vanilla_resnet.yaml")
 cfg.MODEL.WEIGHTS = f"model_final_{args.backbone}_{args.id}.pth" 
 cfg.MODEL.DEVICE='cuda'
 model = build_model(cfg)
@@ -479,14 +500,18 @@ model.eval()
 checkpointer = DetectionCheckpointer(model)
 checkpointer.load(cfg.MODEL.WEIGHTS)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-taus = [round(i*0.05, 2) for i in range(0, 20)]
+# taus = [round(i*0.05, 2) for i in range(0, 20)]
+taus = [0.05, 0.10, 0.20, 0.50, 1.0]
 
 # extraction
-print("Starting training set extraction")
-t0 = time.time()
-dataset_train = fo.load_dataset(f"{args.id}-train")
+# print("Starting training set extraction")
+# t0 = time.time()
+# # dataset_train = fo.load_dataset(f"{args.id}-train")
+# dataset_train = fo.load_dataset(f"prescan-train")
 # extract(dataset_train, args.id, args.backbone)
-# extract_aug(dataset_train, args.id, args.backbone, 10)
+# dataset_train = fo.load_dataset(f"speed-train")
+# extract(dataset_train, args.id, args.backbone)
+# # extract_aug(dataset_train, args.id, args.backbone, 10)
 # print(f"Extraction took {time.time() - t0} seconds")
 
 # print("Starting validation set extraction")
@@ -496,6 +521,7 @@ dataset_train = fo.load_dataset(f"{args.id}-train")
 #     "voc": ["ID-voc-OOD-coco", "OOD-open", "voc-val"],
 #     "kitti": ["ID-bdd-OOD-coco", "OOD-open", "kitti-val", "voc-ood"],
 #     "speed": ["ID-bdd-OOD-coco", "OOD-open", "speed-val", "voc-ood"],
+#     "prescan": ["ID-bdd-OOD-coco", "OOD-open", "prescan-val", "voc-ood"],
 #     "nu": ["ID-bdd-OOD-coco", "OOD-open", "nu-val", "voc-ood"]}
 # for dataset_name in dataset_list[args.id]:
 #     print(f"Extracting {dataset_name}")
@@ -517,27 +543,58 @@ dataset_train = fo.load_dataset(f"{args.id}-train")
 #     pickle.dump(feats_dict, f)
 # print(f"Concatenating features took {time.time() - t0} seconds")
 
-#construction
-print("Starting construction")
-t0 = time.time()
-construct(args.id, args.backbone, taus)
-print(f"Construction took {time.time() - t0} seconds")
+# construction
+# print("Starting construction")
+# t0 = time.time()
+# construct(args.id, args.backbone, taus)
+# print(f"Construction took {time.time() - t0} seconds")
 
 # bam evaluation
-print("Starting evaluation")
-t0 = time.time()
-for tau in taus:
-    print(f"tau: {tau}")
-    evaluate(args.id, args.backbone, tau)
-print(f"Evaluation took {time.time() - t0} seconds")
+# print("Starting evaluation")
+# t0 = time.time()
+# for tau in taus:
+#     print(f"tau: {tau}")
+#     evaluate(args.id, args.backbone, tau)
+# print(f"Evaluation took {time.time() - t0} seconds")
 
 # vos evaluation
 # vos_eval(args.id, args.backbone)
 # tune confidence threshold
 # with h5py.File(f"feats_{args.id}-train_{args.backbone}.h5", 'r') as f:
 #     feats_npy = f[f'feats_{args.id}-train_{args.backbone}'][:]
-# tune_threshold(dataset_train, feats_npy, args.id, args.backbone, 0.05, taus)
+# tau = taus[0]
+# thresholds = [round(i*0.05, 2) for i in range(1, 20)]
+# eval_dict = dict()
+# eval_dict["TPR"] = []
+# eval_dict["FPR"] = []
+# eval_dict["COCO_FPR"] = []
+# eval_dict["Open_Images_FPR"] = []
+# eval_dict["VOC_OOD_FPR"] = []
+# for threshold in tqdm.tqdm(thresholds, desc="Tuning threshold"): 
+#     print(f"threshold: {threshold}")
+#     for dataset_name in dataset_list[args.id]:
+#         dataset = fo.load_dataset(dataset_name)
+#         with h5py.File(f"feats_{args.id}-{dataset_name}_{args.backbone}.h5", 'r') as f:
+#             feats_npy = f[f'feats_{args.id}-{dataset_name}_{args.backbone}'][:]
+#         dataset_filtered = dataset.filter_labels("prediction", F("confidence")>threshold)
+#         if dataset.name.endswith("val"):
+#             tp_prediction_view = dataset_filtered.filter_labels("prediction", F("eval") == "tp")
+#             fp_prediction_view = dataset_filtered.filter_labels("prediction", F("eval") == "fp")
+#             save_features(feats_npy, tp_prediction_view, f"val_feats/{args.id}/{args.backbone}/{dataset_name}_feats_tp_dict.pickle")
+#             save_features(feats_npy, fp_prediction_view, f"val_feats/{args.id}/{args.backbone}/{dataset_name}_feats_fp_dict.pickle")
+#         else:
+#             save_features(feats_npy, dataset_filtered, f"val_feats/{args.id}/{args.backbone}/{dataset_name}_feats_fp_dict.pickle")
+#     tpr_id, fpr_id, coco_fpr, open_fpr, voc_fpr = evaluate(args.id, args.backbone, tau)
+#     eval_dict["TPR"].append(tpr_id)
+#     eval_dict["FPR"].append(fpr_id)
+#     eval_dict["COCO_FPR"].append(coco_fpr)
+#     eval_dict["Open_Images_FPR"].append(open_fpr)
+#     eval_dict["VOC_OOD_FPR"].append(voc_fpr)
+# # save eval_dict
+# with open(f"eval_dict_{args.id}_{args.backbone}.pickle", 'wb') as f:
+#     pickle.dump(eval_dict, f)
+
 # monitor enhancement
-# for ratio in [0.1, 0.2, 0.3]:
-#     print(f"ratio: {ratio}")
-#     enlarge_evaluation(args.id, args.backbone, 0.01, ratio) 
+for ratio in [1.0, 1.25, 1.5]:
+    print(f"ratio: {ratio}")
+    enlarge_evaluation(args.id, args.backbone, 1.0, ratio) 

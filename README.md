@@ -91,4 +91,5 @@ python evaluate.py --id dataset_name --backbone backbone_name --tau tau_for_moni
 <div align="center">
   <a href="https://drive.google.com/file/d/1ZeIV3Eo0KGgVDJImS5bPEJzjqNs65JBW/preview"><img src="https://i.ibb.co/SRR6jch/Screenshot-2023-09-07-at-13-43-31.png" alt="IMAGE ALT TEXT"></a>
 </div>
-You can also hands on our monitoring tool using a web application deployed on [HuggingFace Space](https://huggingface.co/spaces/HugoHE/monitoringObjectDetection)
+
+You can also try out our monitoring tool using a web application deployed on [HuggingFace Space](https://huggingface.co/spaces/HugoHE/monitoringObjectDetection)

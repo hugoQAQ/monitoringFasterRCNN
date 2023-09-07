@@ -39,10 +39,10 @@ The custom dataset folder should have the following structure:
 Notice that the annotation file `labels.json` should be prepared in COCO format.
 
 The OOD datasets' json files can be downloaded in [COCO-OOD](to-add), [Open-OOD](to-add) and [VOC-OOD](to-add).
-## Evaluation
+## Monitor Construction
 **Pretrained models**
 
-We provide the weights and the evaluation metrics for both Resnet and RegNet backbones.
+Our method doesn't require further retraining of model. For moniotr construction, only model weight and training data are needed. Here, we provide the weights and the evaluation metrics for both Resnet and RegNet backbones.
 <table><tbody>
 <!-- START TABLE -->
 <!-- TABLE HEADER -->
@@ -67,3 +67,33 @@ We provide the weights and the evaluation metrics for both Resnet and RegNet bac
 <td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/COCO-Detection/faster_rcnn_R_50_C4_1x/137257644/model_final_721ade.pkl">weight</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/COCO-Detection/faster_rcnn_R_50_C4_1x/137257644/metrics.json">metrics</a></td>
 </tr>
 </tbody></table>
+
+**Feature extraction for training dataset:**
+```bash
+python feature_extract.py --id dataset_name --backbone backbone_name
+```
+**Monitor construction:**
+```bash
+python monitor_construct.py --id dataset_name --backbone backbone_name
+```
+# Moniotr Evaluation
+**Feature extraction for OOD dataset:**
+
+To evaluate the monitors against OOD dataset, feature should be first extracted from the OOD dataset:
+```bash
+python feature_extract.py --id dataset_name --backbone backbone_name
+```
+**Evaluate**
+```bash
+python evaluate.py --id dataset_name --backbone backbone_name --tau tau_for_monitor
+```
+# Demo
+<!DOCTYPE html>
+<html>
+<body>
+  
+  <iframe src="https://drive.google.com/file/d/1ZeIV3Eo0KGgVDJImS5bPEJzjqNs65JBW/preview" width="640" height="480" allow="autoplay"></iframe> 
+
+</body>
+</html>
+You can also hands on our monitoring tool using a web application deployed on [HuggingFace Space](https://huggingface.co/spaces/HugoHE/monitoringObjectDetection)

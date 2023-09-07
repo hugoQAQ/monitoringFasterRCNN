@@ -88,7 +88,6 @@ python feature_extract.py --id dataset_name --backbone backbone_name
 python evaluate.py --id dataset_name --backbone backbone_name --tau tau_for_monitor
 ```
 # Demo
-<!DOCTYPE html>
 <html>
 <body>
   

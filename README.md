@@ -88,6 +88,5 @@ python feature_extract.py --id dataset_name --backbone backbone_name
 python evaluate.py --id dataset_name --backbone backbone_name --tau tau_for_monitor
 ```
 # Demo
-  
-  <iframe src="https://drive.google.com/file/d/1ZeIV3Eo0KGgVDJImS5bPEJzjqNs65JBW/preview" width="640" height="480" allow="autoplay"></iframe> 
+<video src="https://drive.google.com/file/d/1ZeIV3Eo0KGgVDJImS5bPEJzjqNs65JBW/preview" width=640/>  
 You can also hands on our monitoring tool using a web application deployed on [HuggingFace Space](https://huggingface.co/spaces/HugoHE/monitoringObjectDetection)

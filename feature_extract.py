@@ -25,8 +25,6 @@ np.random.seed(0)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-from vos.detection.modeling.regnet import build_regnet_fpn_backbone
-
 VOC_THING_CLASSES = ['person',
                      'bird',
                      'cat',

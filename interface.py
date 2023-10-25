@@ -56,7 +56,7 @@ class Detectron2Monitor():
 
     def _get_model(self):
         cfg = get_cfg()
-        cfg.merge_from_file("/home/hugo/bdd100k-monitoring/monitoringObjectDetection/vanilla.yaml")
+        cfg.merge_from_file(f"/home/hugo/bdd100k-monitoring/monitoringObjectDetection/vanilla_{self.backbone}.yaml")
         cfg.MODEL.WEIGHTS = f"models/model_final_{self.backbone}_{self.id}.pth" 
         cfg.MODEL.DEVICE='cuda'
         cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(self.label_list)
@@ -242,10 +242,9 @@ class Detectron2Monitor():
             FPR =  round((accept_sum['fp'] / (reject_sum['fp'] + accept_sum['fp'])*100), 2)
             data_ood.append([dataset_name, str(FPR)+"%"])
             i += 1
-        
         # prepare dataframes
         df_ood = pd.DataFrame(data_ood, columns=["Dataset", "FPR"])
-        df_ood["Dataset"] = ["COCO", "Open Images"] if id == "voc" else ["COCO", "Open Images", "VOC-OOD"]
+        df_ood["Dataset"] = ["COCO", "Open Images"] if self.id == "voc" else ["COCO", "Open Images", "VOC-OOD"]
         return df_id, df_ood
 
 def fx_gradio(id, backbone, progress=gr.Progress(track_tqdm=True)):
@@ -278,7 +277,17 @@ def eval_gradio(id, backbone, clustering_algo, nb_clusters, eps, min_samples, pr
 with gr.Blocks(theme='soft') as demo:
     gr.Markdown("# Runtime Monitoring Object Detection")
     gr.Markdown(
-        """This interactive demo is based on the box abstraction-based monitors for Faster R-CNN model. The monitors are constructed by abstraction of extracted feature from the training data. The demo showcases from monitor construction to monitor evaluation. 
+        """
+This interactive demo presents an approach to monitoring the Faster R-CNN model using box abstraction-based techniques. Our method involves abstracting features extracted from training data to construct monitors. The demo walks users through the entire process, from monitor construction to evaluation. 
+<!-- The interface is divided into several basic modules:
+
+- **In-distribution dataset and backbone**: This module allows users to select their target model and dataset.
+
+- **Feature extraction**: Neuron activation pattern are extracted from the model's intermediate layers using training data. These features represent the good behaviors of the model.
+- **Monitor construction**: Extracted features are grouped using different clustering techniques. These clusters are then abstracted to serve as references for the monitors. 
+- **Evaluation preparation**: To facilate the evalution, the features should be extracted from evaluation datasets prior to monitor evalution. 
+- **Monitor Evaluation**: The effectiveness of monitors in detecting Out-of-Distribution (OoD) objects are assessed. One of our core metric is FPR 95, which represents the false positive (incorrectly detected objects) rate when the true positive rate for ID is set at 95%. -->
+    
     """
     )
     id = gr.Radio(['PASCAL-VOC', 'BDD100K', 'KITTI', 'Speed signs', 'NuScenes'], label="Dataset")
@@ -287,21 +296,21 @@ with gr.Blocks(theme='soft') as demo:
         with gr.Column():
             with gr.Group():
                 extract_btn = gr.Button("Extract features")
-                output1 = gr.Textbox()
+                output1 = gr.Textbox(label="Output")
             with gr.Group():
+                construct_btn = gr.Button("Monitor Construction")
                 clustering_algo = gr.Dropdown(['kmeans', 'spectral', 'dbscan', 'opticals'], label="Clustering algorithm")
                 with gr.Row():
                     nb_clusters = gr.Number(value=5, label="Number of clusters", precision=0)
                     eps = gr.Number(value=5, label="Epsilon", precision=0)
                     min_samples = gr.Number(value=10, label="Minimum samples", precision=0)
-                construct_btn = gr.Button("Construct monitors")
-                output2 = gr.Textbox()
+                output2 = gr.Textbox(label="Output")
         with gr.Column():
             with gr.Group():
-                prep_btn = gr.Button("Eval Data Prep")
-                prep_output = gr.Textbox()
+                prep_btn = gr.Button("Evaluation Data Preparation")
+                prep_output = gr.Textbox(label="Output")
             with gr.Group():
-                eval_btn = gr.Button("Evaluate")
+                eval_btn = gr.Button("Monitor Evaluation")
                 eval_id = gr.Dataframe(type="pandas", label="ID performance")
                 eavl_ood = gr.Dataframe(type="pandas", label="OOD performance")
     extract_btn.click(fn=fx_gradio, inputs=[id, backbone], outputs=[output1])
